@@ -54,7 +54,7 @@ def get_detail(driver, title_name):
 
 
 def test():
-    chromedriver_path = r"../utils/chromedriver.exe"
+    chromedriver_path = r"../../../resources/chromedriver.exe"
     driver = webdriver.Chrome(executable_path=chromedriver_path)
     driver.get(r'E:\en_20210101_html/index.htm')
     details = driver.find_elements_by_css_selector("[role='row']")
@@ -92,7 +92,7 @@ if __name__ == '__main__':
     #     driver, results = get_detail(driver, detail)
     #     results.to_sql("CT_IPC", con=engin, index=False, if_exists='append')
     # driver.quit()
-    chromedriver_path = r"../utils/chromedriver.exe"
+    chromedriver_path = r"../../../resources/chromedriver.exe"
     driver = webdriver.Chrome(executable_path=chromedriver_path)
     driver, results = get_detail(driver, 'A23B')
     engin = sqlalchemy.create_engine("mssql+pymssql://sa:wlzx87811024@172.16.5.45:1433/Lvjiaan")
