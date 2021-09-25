@@ -72,6 +72,9 @@ def do_law():
 
 
 def post_patent_list_solr():
+    url = 'http://api.sti.gov.cn/stiservice/sendMessage'
+    token = requests.get("http://www.nbippc.cn/Retrieval/getDiAccesstoken?appid=1051&appkey=1051").json()[
+        'access_token']
     params = {
         'app_id': 'cfdc9a74030a41659cd43b887baf4800',
         'app_code': 'PatentList',
@@ -81,9 +84,10 @@ def post_patent_list_solr():
         'params': '{"patentee":"宁波爱科特生活电器有限公司","patentType":"2",grantDateStart:"20190101"}',
         'method': 'POST'
     }
-    headers={
-        'Authorization':'bearer '
+    headers = {
+        'Authorization': 'bearer ' + token
     }
+    result_json = requests.post(url, data=params, headers=headers)
 
 
 if __name__ == '__main__':
