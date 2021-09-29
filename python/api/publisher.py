@@ -1,7 +1,6 @@
 import requests
 from sqlalchemy import text
 import sqlalchemy
-# import pandas as pd
 from urllib.parse import quote_plus as urlquote
 import db.base_engine as dao
 import pandas as pd
@@ -10,10 +9,10 @@ token_return = requests.get("http://www.nbippc.cn/Retrieval/getDiAccesstoken?app
 token = token_return.json()['result']
 
 
-def post_detail(pno):
+def post_detail(pid):
     url = 'http://114.251.8.193/api/patent/detail/catalog'
     params = {
-        "pno": pno,
+        "pid": pid,
         "lang": "cn",
         "scope": "read_cn",
         "client_id": "5d8f767eac110007108d0e0a77f83ea8",
@@ -24,7 +23,7 @@ def post_detail(pno):
 
 
 def post_express2(express):
-    url = 'http://114.251.8.193/api/patent/search/expression2?lang=cn&scope=read_us&client_id=5d8f767eac110007108d0e0a77f83ea8&access_token=%s&express=%s&page=1&page_row=10' % (
+    url = 'http://114.251.8.193/api/patent/search/expression2?lang=cn&scope=read_cn&client_id=5d8f767eac110007108d0e0a77f83ea8&access_token=%s&express=%s&page=1&page_row=10' % (
         token, express)
     # params = {
     #     "lang": "cn",
@@ -39,9 +38,16 @@ def post_express2(express):
     return result
 
 
+def post_express(express):
+    url = 'http://114.251.8.193/api/patent/search/expression?lang=cn&scope=read_cn&client_id=5d8f767eac110007108d0e0a77f83ea8&access_token=%s&express=%s&page=1&page_row=10' % (
+        token, express)
+    result = requests.post(url)
+    return result
+
+
 def do_express2():
     with dao.engine187.connect() as conn:
-        sql = text("SELECT DISTINCT apn_f FROM Lvjiaan.dbo.a_ex1 WHERE pid IS NULL AND apn_f IS NOT NULL")
+        sql = text("SELECT DISTINCT apn_f FROM Lvjiaan.dbo.a_ex3 WHERE pid IS NULL ")
         result = conn.execute(sql).fetchall()
         for row in result:
             apn = row[0]
@@ -50,30 +56,46 @@ def do_express2():
             if post_result.json()['total'] != '':
                 pid = post_result.json()['context']['records'][0]['pid']
                 pno = post_result.json()['context']['records'][0]['pno']
-                sql = text("UPDATE Lvjiaan.dbo.a_ex1 SET pno=:pno,pid=:pid WHERE apn_f=:apn_f")
+                sql = text("UPDATE Lvjiaan.dbo.a_ex3 SET pno=:pno,pid=:pid WHERE apn_f=:apn_f")
                 conn.execute(sql, {"pno": str(pno), "pid": pid, "apn_f": str(apn)})
 
 
-def do_law():
+def post_law(pid):
     url = "http://114.251.8.193/api/patent/detail/law"
     params = {
-        "pid": "PIDEPA42017101100000000002169131I0RVHOC015F0B",
+        "pid": pid,
         "lang": "cn",
         "scope": "read_cn",
         "client_id": "5d8f767eac110007108d0e0a77f83ea8",
         "access_token": token
     }
-    result_json = requests.post(url, data=params)
-    print(result_json.json())
-    records = result_json.json()['context']['records'][0]
-    df = pd.DataFrame(records)
-    df['pid'] = 'lvjiaan'
-    df.to_sql("a_ct_law", con=dao.engine187, index=False, if_exists='append')
+    post_result = requests.post(url, data=params)
+    return post_result
 
 
-def post_patent_list_solr():
+def do_law():
+    with dao.engine187.connect() as conn:
+        sql = text("SELECT pid FROM Lvjiaan.dbo.a_ex2 WHERE pid IS NOT NULL AND grant_date IS NULL")
+        result = conn.execute(sql).fetchall()
+        for row in result:
+            pid = row[0]
+            print(pid)
+
+            try:
+                result = post_law(pid)
+                records = result.json()['context']['records'][0]
+                df = pd.DataFrame(records)
+                df['pid'] = pid
+                df.to_sql("a_ct_law", con=dao.engine187, index=False, if_exists='append')
+
+            except Exception:
+                pass
+
+
+def post_patent_list_solr(apn):
     url = 'http://api.sti.gov.cn/stiservice/sendMessage'
-    token = requests.get("http://www.nbippc.cn/Retrieval/getDiAccesstoken?appid=1051&appkey=1051").json()[
+    token = requests.get(
+        "http://api.sti.gov.cn/oauth/token?username=jeecg&grant_type=saml_auth&client_id=client_3&client_secret=s4DWmpkNm8HS").json()[
         'access_token']
     params = {
         'app_id': 'cfdc9a74030a41659cd43b887baf4800',
@@ -81,24 +103,142 @@ def post_patent_list_solr():
         'client_id': '1001',
         'client_secret': '1024',
         'server_name': 'PatentList',
-        'params': '{"patentee":"宁波爱科特生活电器有限公司","patentType":"2",grantDateStart:"20190101"}',
+        'params': '{"applyNum":"%s"}' % (apn),
         'method': 'POST'
     }
     headers = {
         'Authorization': 'bearer ' + token
     }
-    result_json = requests.post(url, data=params, headers=headers)
+    post_result = requests.post(url, data=params, headers=headers)
+    return post_result
+
+
+def do_solr():
+    with dao.engine187.connect() as conn:
+        sql = text(
+            "SELECT DISTINCT apn_f FROM Lvjiaan.dbo.a_ex2 WHERE patent_name IS NULL AND apn_f IS NOT NULL AND PATENT_name is null")
+        result = conn.execute(sql).fetchall()
+        for row in result:
+            apn = row[0]
+            print(apn)
+            post_result = post_patent_list_solr(apn)
+            if post_result.json()['body']['data']['totalItemCount'] != 0:
+                patentee = ''
+                patentname = post_result.json()['body']['data']['data'][0]['patentname']
+                statuscode = post_result.json()['body']['data']['data'][0]['statuscode']
+                grantdate = post_result.json()['body']['data']['data'][0]['grantdate']
+                try:
+                    patentee = post_result.json()['body']['data']['data'][0]['patentee']
+                except Exception:
+                    pass
+                # pno = post_result.json()['body']['data']['data'][0]['publicnum']
+
+                sql = text(
+                    "UPDATE Lvjiaan.dbo.a_ex2 SET patent_name=:patent_name,patentee=:patentee,grant_date=:grant_date,status_code=:status_code WHERE apn_f=:apn_f")
+                conn.execute(sql, {"patent_name": str(patentname), "patentee": patentee, "grant_date": grantdate,
+                                   "status_code": statuscode, "apn_f": str(apn)})
+
+
+def do_solr_ex4():
+    with dao.engine187.connect() as conn:
+        sql = text(
+            "SELECT DISTINCT apn_f FROM Lvjiaan.dbo.a_ex4 WHERE patent_name IS NULL AND apn_f IS NOT NULL AND PATENT_name is null")
+        result = conn.execute(sql).fetchall()
+        for row in result:
+            apn = row[0]
+            print(apn)
+            post_result = post_patent_list_solr(apn)
+            if post_result.json()['body']['data']['totalItemCount'] != 0:
+                patentname = post_result.json()['body']['data']['data'][0]['patentname']
+                applyname = post_result.json()['body']['data']['data'][0]['applypersonname']
+                applydate = post_result.json()['body']['data']['data'][0]['applydate']
+                # pno = post_result.json()['body']['data']['data'][0]['publicnum']
+
+                sql = text(
+                    "UPDATE Lvjiaan.dbo.a_ex4 SET patent_name=:patent_name,apply_name=:apply_name,apply_date=:apply_date WHERE apn_f=:apn_f")
+                conn.execute(sql, {"patent_name": str(patentname), "apply_name": applyname, "apply_date": applydate,
+                                   "apn_f": str(apn)})
+
+
+def do_detail():
+    with dao.engine187.connect() as conn:
+        sql = text("SELECT pid FROM Lvjiaan.dbo.a_ex3 WHERE pid IS NOT NULL AND patent_name IS NULL")
+        result = conn.execute(sql).fetchall()
+        for row in result:
+            pid = row[0]
+            print(pid)
+            category_json = post_detail(pid).json()['context']['records'][0]['catalogPatent']
+            print(category_json)
+
+            patentname = category_json['tio']
+            apply_name = category_json['apo']
+
+            apply_date = category_json['ad']
+            sql = text(
+                "UPDATE Lvjiaan.dbo.a_ex3 SET patent_name=:patent_name,apply_name=:apply_name,apply_date=:apply_date WHERE pid=:pid")
+            conn.execute(sql, {"patent_name": str(patentname), "apply_name": apply_name,
+                               "apply_date": apply_date, "pid": str(pid)})
+
+
+def do_detail2():
+    with dao.engine187.connect() as conn:
+        sql = text("SELECT pid FROM Lvjiaan.dbo.a_ex1 WHERE pid IS NOT NULL AND patent_name IS NULL")
+        result = conn.execute(sql).fetchall()
+        for row in result:
+            pid = row[0]
+            print(pid)
+            category_json = post_detail(pid).json()
+            sql = text(
+                "UPDATE Lvjiaan.dbo.a_ex1 SET json=:json WHERE pid=:pid")
+            conn.execute(sql, {"json": str(category_json), "pid": str(pid)})
+
+
+def do_express():
+    with dao.engine187.connect() as conn:
+        sql = text("SELECT DISTINCT apn_f FROM Lvjiaan.dbo.a_ex4_2 WHERE apn_f IS NOT NULL AND patent_name IS NULL")
+        result = conn.execute(sql).fetchall()
+        for row in result:
+            apn = row[0]
+            print(apn)
+            post_result = post_express('(申请号=(%s))' % (apn))
+            try:
+                if post_result.json()['total'] == '':
+                    continue
+                list_records = post_result.json()['context']['records']
+                tio = ''
+                apo = ''
+                ad = ''
+                print(list_records)
+                for record in list_records:
+                    try:
+                        if tio == '':
+                            tio = record['tio']
+                    except Exception:
+                        pass
+                    try:
+                        if apo == '':
+                            apo = record['apo']
+                    except Exception:
+                        pass
+                    try:
+                        if ad == '':
+                            ad = record['ad'].split(' ')[0].replace('/', '')
+                    except Exception:
+                        pass
+
+                sql = text(
+                    "UPDATE Lvjiaan.dbo.a_ex4_2 SET patent_name=:tio,apply_name=:apo,apply_date=:ad WHERE apn_f=:apn_f")
+                conn.execute(sql, {"tio": str(tio), "apo": apo, "ad": ad, "apn_f": str(apn)})
+            except Exception:
+                pass
+
+            # break
 
 
 if __name__ == '__main__':
+    do_express()
+
+    # do_solr_ex4()
     # do_express2()
-    do_law()
-    # with dao.engine187.connect() as conn:
-    #     sql = text("SELECT TOP 1 pno FROM Lvjiaan.dbo.a_t924 WHERE pid IS NULL")
-    #     result = conn.execute(sql).fetchall()
-    #     for row in result:
-    #         pno = row[0]
-    #         category_json = post_detail(pno).json()['context']['records'][0]['catalogPatent']
-    #         pid = category_json['pid']
-    #         sql = text("UPDATE Lvjiaan.dbo.a_t924 SET json=:json,pid=:pid WHERE pno=:pno")
-    #         conn.execute(sql, {"json": str(category_json), "pid": pid, "pno": str(pno)})
+    # do_detail()
+    # do_law()
