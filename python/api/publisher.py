@@ -39,7 +39,7 @@ def post_express2(express):
 
 
 def post_express(express):
-    url = 'http://114.251.8.193/api/patent/search/expression?lang=cn&scope=read_cn&client_id=5d8f767eac110007108d0e0a77f83ea8&access_token=%s&express=%s&page=1&page_row=10' % (
+    url = 'http://114.251.8.193/api/patent/search/expression?lang=cn&scope=read_tw&client_id=5d8f767eac110007108d0e0a77f83ea8&access_token=%s&express=%s&page=1&page_row=10' % (
         token, express)
     result = requests.post(url)
     return result
@@ -195,17 +195,19 @@ def do_detail2():
 
 def do_express():
     with dao.engine187.connect() as conn:
-        sql = text("SELECT DISTINCT apn_f FROM Lvjiaan.dbo.a_ex4_2 WHERE apn_f IS NOT NULL AND patent_name IS NULL")
+        sql = text("SELECT DISTINCT applynum FROM Lvjiaan.dbo.a_1027 WHERE applynum IS NOT NULL AND tio is NULL")
         result = conn.execute(sql).fetchall()
         for row in result:
             apn = row[0]
             print(apn)
-            post_result = post_express('(申请号=(%s))' % (apn))
+            post_result = post_express('(公布号=(%s))' % (apn.replace('/', '\/')))
             try:
                 if post_result.json()['total'] == '':
                     continue
                 list_records = post_result.json()['context']['records']
                 tio = ''
+                aso = ''
+                lssc = ''
                 apo = ''
                 ad = ''
                 print(list_records)
@@ -213,6 +215,16 @@ def do_express():
                     try:
                         if tio == '':
                             tio = record['tio']
+                    except Exception:
+                        pass
+                    try:
+                        if aso == '':
+                            aso = record['aso']
+                    except Exception:
+                        pass
+                    try:
+                        if lssc == '':
+                            lssc = record['lsscn']
                     except Exception:
                         pass
                     try:
@@ -227,8 +239,9 @@ def do_express():
                         pass
 
                 sql = text(
-                    "UPDATE Lvjiaan.dbo.a_ex4_2 SET patent_name=:tio,apply_name=:apo,apply_date=:ad WHERE apn_f=:apn_f")
-                conn.execute(sql, {"tio": str(tio), "apo": apo, "ad": ad, "apn_f": str(apn)})
+                    "UPDATE Lvjiaan.dbo.a_1027 SET tio=:tio,aso=:aso,lssc=:lssc,apo=:apo,ad=:ad WHERE applynum=:applynum")
+                conn.execute(sql,
+                             {"tio": str(tio), "aso": aso, "apo": apo, "lssc": lssc, "ad": ad, "applynum": str(apn)})
             except Exception:
                 pass
 

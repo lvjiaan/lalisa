@@ -36,4 +36,6 @@ def sign(pn):
 
 if __name__ == '__main__':
     request = post_score('CN105730698B')
-    print(request.json())
+    print(request.text)
+    # score = post_result.json()['score']
+    print(request.json()['score'])
