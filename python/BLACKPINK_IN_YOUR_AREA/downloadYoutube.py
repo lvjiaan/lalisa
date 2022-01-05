@@ -35,5 +35,5 @@ def download_video(url):
 
 if __name__ == '__main__':
     #视频链接
-    video_url = 'https://www.youtube.com/watch?v=wItUc5NPhh4'
+    video_url = 'https://www.youtube.com/watch?v=cAvMGWLZCHA'
     download_video(video_url)
